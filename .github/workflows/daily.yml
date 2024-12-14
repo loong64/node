@@ -69,13 +69,20 @@ jobs:
       - name: Setup QEMU
         if: env.create == '1'
         run: |
-          docker run --rm --privileged ghcr.io/loong64/qemu-user-static --reset -p yes
+          case ${{ matrix.binaries }} in
+            glibc)
+              echo "Pass ..."
+              ;;
+            musl)
+              docker run --rm --privileged ghcr.io/loong64/qemu-user-static --reset -p yes
+              ;;
+          esac
 
       - name: Cache node.js
         if: env.create == '1'
         uses: actions/cache@v4
         with:
-          path: /tmp/.buildx-cache
+          path: ${{ github.workspace }}/workdir/.ccache
           key: ${{ matrix.name }}-${{ matrix.binaries }}-${{ matrix.version }}-${{ github.sha }}
           restore-keys: |
             ${{ matrix.name }}-${{ matrix.binaries }}-${{ matrix.version }}-
@@ -83,10 +90,9 @@ jobs:
       - name: Set permissions
         if: env.create == '1'
         run: |
-          mkdir -p /tmp/.buildx-cache
-          mv /tmp/.buildx-cache ${{ github.workspace }}/workdir
-          sudo chmod -R 777 ${{ github.workspace }}/workdir
-          sudo chown -R 1000:docker ${{ github.workspace }}/workdir
+          mkdir -p ${{ github.workspace }}/workdir/staging
+          sudo chmod -R 777 ${{ github.workspace }}/workdir/staging
+          sudo chown -R 1000:docker ${{ github.workspace }}/workdir/staging
 
       - name: Build node.js
         if: env.create == '1'
@@ -115,13 +121,8 @@ jobs:
           if [ "${majorVersion}" != "${{ matrix.latest_version }}" ]; then
             latestFlag="--latest=false"
           fi
-          gh release create ${{ env.version }} -R ${{ github.repository }} --title ${{ env.version }} --notes "**Full Changelog**: [${{ env.version }}](https://github.com/nodejs/node/releases/tag/${{ env.version }})" ${latestFlag}
-          gh release upload ${{ env.version }} -R ${{ github.repository }} ${{ github.workspace }}/workdir/staging/release/${{ env.version }}/* ${{ github.workspace }}/workdir/staging/src/${{ env.version }}/*
+          gh release create ${{ env.version }} -R ${{ github.repository }} --title ${{ env.version }} --notes "**Full Changelog**: [${{ env.version }}](https://github.com/nodejs/node/releases/tag/${{ env.version }})" ${latestFlag} || true
+          gh release upload ${{ env.version }} -R ${{ github.repository }} ${{ github.workspace }}/workdir/staging/src/${{ env.version }}/* || true
+          gh release upload ${{ env.version }} -R ${{ github.repository }} ${{ github.workspace }}/workdir/staging/release/${{ env.version }}/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Move cache
-        if: env.create == '1'
-        run: |
-          rm -rf ${{ github.workspace }}/workdir/staging
-          mv ${{ github.workspace }}/workdir /tmp/.buildx-cache

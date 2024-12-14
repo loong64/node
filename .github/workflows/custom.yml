@@ -7,14 +7,24 @@ on:
         description: 'Node.js version'
         required: true
         default: 'v22.9.0'
+      use_cache:
+        description: 'Use cache'
+        type: boolean
+        required: true
+        default: false
       latest_version:
         description: 'Latest'
+        type: boolean
         required: true
-        default: 'false'
+        default: false
 
 jobs:
   build-custom:
     runs-on: ubuntu-latest
+    env:
+      version: ${{ github.event.inputs.version }}
+      use_cache: ${{ github.event.inputs.use_cache }}
+      latest_version: ${{ github.event.inputs.latest_version }}
     strategy:
       matrix:
         name: ['node']
@@ -23,15 +33,17 @@ jobs:
     steps:
       - name: Check version
         run: |
-          echo "version=${{ github.event.inputs.version }}" >> $GITHUB_ENV
-          echo "latest_version=${{ github.event.inputs.latest_version }}" >> $GITHUB_ENV
           echo "Node.js current version: ${version}, latest: ${latest_version}"
+          short_version=$(echo $version | cut -d '.' -f 1,2)
+          major_version=$(echo $version | cut -d '.' -f 1)
+          echo "short_version=${short_version}" >> $GITHUB_ENV
+          echo "major_version=${major_version}" >> $GITHUB_ENV
 
       - name: Check release
         run: |
           case ${{ matrix.binaries }} in
             glibc)
-              if [ "${{ matrix.version }}" -gt "20" ]; then
+              if [ "${{ env.major_version }}" -gt "20" ]; then
                 # https://github.com/nodejs/node/pull/52888
                 exit 0
               fi
@@ -70,14 +82,39 @@ jobs:
       - name: Setup QEMU
         if: env.create == '1'
         run: |
-          docker run --rm --privileged ghcr.io/loong64/qemu-user-static --reset -p yes
+          case ${{ matrix.binaries }} in
+            glibc)
+              echo "Pass ..."
+              ;;
+            musl)
+              docker run --rm --privileged ghcr.io/loong64/qemu-user-static --reset -p yes
+              ;;
+          esac
 
-      - name: Set permissions
+      - name: Cache node.js
         if: env.create == '1'
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/workdir/.ccache
+          key: ${{ matrix.name }}-${{ matrix.binaries }}-${{ env.major_version }}-${{ github.sha }}
+          restore-keys: |
+            ${{ matrix.name }}-${{ matrix.binaries }}-${{ env.major_version }}-
+
+      - name: Set Cache
+        if: env.use_cache == 'true'
         run: |
-          mkdir -p ${{ github.workspace }}/workdir
-          sudo chmod -R 777 ${{ github.workspace }}/workdir
-          sudo chown -R 1000:docker ${{ github.workspace }}/workdir
+          mkdir -p ${{ github.workspace }}/workdir/staging
+          sudo chmod -R 777 ${{ github.workspace }}/workdir/staging
+          sudo chown -R 1000:docker ${{ github.workspace }}/workdir/staging
+          case ${{ matrix.binaries }} in
+            glibc)
+              echo "Pass ..."
+              ;;
+            musl)
+              wget https://www.wuxiaobai.win/download/node-cache-${{ env.version }}-linux-loong64-musl.tar.gz
+              tar -pxf node-cache-${{ env.version }}-linux-loong64-musl.tar.gz -C ${{ github.workspace }}/workdir
+              ;;
+          esac
 
       - name: Build node.js
         if: env.create == '1'
@@ -105,7 +142,8 @@ jobs:
           if [ "${{ env.latest_version }}" != "true" ]; then
             latestFlag="--latest=false"
           fi
-          gh release create ${{ env.version }} -R ${{ github.repository }} --title ${{ env.version }} --notes "**Full Changelog**: [${{ env.version }}](https://github.com/nodejs/node/releases/tag/${{ env.version }})" ${latestFlag}
-          gh release upload ${{ env.version }} -R ${{ github.repository }} ${{ github.workspace }}/workdir/staging/release/${{ env.version }}/* ${{ github.workspace }}/workdir/staging/src/${{ env.version }}/*
+          gh release create ${{ env.version }} -R ${{ github.repository }} --title ${{ env.version }} --notes "**Full Changelog**: [${{ env.version }}](https://github.com/nodejs/node/releases/tag/${{ env.version }})" ${latestFlag} || true
+          gh release upload ${{ env.version }} -R ${{ github.repository }} ${{ github.workspace }}/workdir/staging/src/${{ env.version }}/* || true
+          gh release upload ${{ env.version }} -R ${{ github.repository }} ${{ github.workspace }}/workdir/staging/release/${{ env.version }}/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
