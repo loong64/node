@@ -33,10 +33,6 @@ jobs:
         run: |
           case ${{ matrix.binaries }} in
             glibc)
-              if [ "${{ matrix.version }}" -gt "20" ]; then
-                # https://github.com/nodejs/node/pull/52888
-                exit 0
-              fi
               gh release view ${{ env.version }} -R ${{ github.repository }} | grep node-${{ env.version }}-linux-loong64.tar.xz >/dev/null 2>&1 || echo "create=1" >> $GITHUB_ENV
               ;;
             musl)
@@ -68,11 +64,6 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
         if: env.create == '1'
-
-      - name: Setup QEMU
-        if: env.create == '1'
-        run: |
-          docker run --rm --privileged ghcr.io/loong64/qemu-user-static --reset -p yes
 
       - name: Cache node.js
         if: env.create == '1'

@@ -78,11 +78,6 @@ jobs:
       - uses: docker/setup-buildx-action@v3
         if: env.create == '1'
 
-      - name: Setup QEMU
-        if: env.create == '1'
-        run: |
-          docker run --rm --privileged ghcr.io/loong64/qemu-user-static --reset -p yes
-
       - name: Cache node.js
         if: env.create == '1'
         uses: actions/cache@v4
@@ -98,15 +93,6 @@ jobs:
           mkdir -p ${{ github.workspace }}/workdir/staging
           sudo chmod -R 777 ${{ github.workspace }}/workdir/staging
           sudo chown -R 1000:docker ${{ github.workspace }}/workdir/staging
-          case ${{ matrix.binaries }} in
-            glibc)
-              echo "Pass ..."
-              ;;
-            musl)
-              wget https://www.wuxiaobai.win/download/node-cache-${{ env.version }}-linux-loong64-musl.tar.gz
-              tar -pxf node-cache-${{ env.version }}-linux-loong64-musl.tar.gz -C ${{ github.workspace }}/workdir
-              ;;
-          esac
 
       - name: Build node.js
         if: env.create == '1'
