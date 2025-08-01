@@ -11,7 +11,7 @@ on:
         description: 'Cache'
         type: boolean
         required: true
-        default: false
+        default: true
       latest_version:
         description: 'Latest'
         type: boolean
@@ -94,6 +94,9 @@ jobs:
       - name: Build node.js
         if: env.create == '1'
         run: |
+          if [ "${{ env.major_version }}" = "24" ]; then
+            sed -i 's@stable@mainline@g' recipes/loong64/Dockerfile
+          fi
           case ${{ matrix.binaries }} in
             glibc)
               ./bin/local_build.sh -r loong64 -v ${{ env.version }} -w ${{ github.workspace }}/workdir
